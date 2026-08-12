@@ -4,78 +4,76 @@ An interactive game for teaching students to simplify radicals by pairing prime 
 
 Students break a radicand into its prime factors, then match pairs (or triples, or quadruples for higher roots). Each successful pair escapes the radical and multiplies into the coefficient. Unpaired primes stay inside.
 
-> **Screenshot:** drop a `screenshot.png` next to this README and add:
-> `![Prime Pairs](screenshot.png)`
+Problems are generated randomly, so the game never runs out.
 
 ## The game
 
 Four difficulty modes across a segmented tab bar at the top:
 
-- **Warmup** — the prime factors are already placed under the radical. Students just pair them out. Five problems, no timer.
-- **Basic** — students click primes from a pool at the bottom to build the radicand themselves, then pair them. 10-second timer per problem; wrong picks shake and cost a second.
+- **Warmup** — the prime factors are already placed under the radical. Students just pair them out. No timer.
+- **Basic** — students click primes from a pool at the bottom to build the radicand themselves, then pair them. Timed; wrong picks shake and cost a second.
 - **Advanced** — same as Basic, but the pool now includes variables (`x`, `y`). An expression like `4x²` means the student clicks `2` twice and `x` twice.
-- **Extreme** — introduces cube roots (∛) and 4th roots (∜), with and without variables. Students must group **three** or **four** matching factors instead of two before they escape the radical.
+- **Extreme** — cube roots (∛) and 4th roots (∜), with and without variables. Students must group **three** or **four** matching factors instead of two.
 
-If a student gets stuck, the **reveal →** button jumps straight to the correct answer state, then converts to **next →** to advance. The timer stops at 0 but the game keeps going.
+The header tracks how many problems you've solved and your current streak. Using **reveal →** breaks the streak; so does finishing after the clock hits zero.
+
+If a student gets stuck, **reveal →** jumps straight to the correct answer, then becomes **next →** to move on. **reset** restarts the current problem. The timer stops at 0 but the game keeps going.
 
 ## Running it
 
-This is a plain static site — three files plus a favicon. No build step, no npm, nothing to install.
+Plain static site — three files plus a favicon. No build step, no npm, nothing to install.
 
-**To try it locally:** double-click `index.html`. It'll open in your browser and work.
+**Locally:** double-click `index.html`.
 
-**To put it on the web:** upload all four files (`index.html`, `style.css`, `app.js`, `favicon.svg`) to whatever hosting you use — same as any static site. GitHub Pages, Netlify, a school-hosted folder, whatever polar-battleship uses.
+**On the web:** upload `index.html`, `style.css`, `app.js`, and `favicon.svg` to your host. Same as any static site.
 
-## Adding your own problems
+## Tuning the difficulties
 
-Open `app.js` in any text editor. The problems live at the very top, one array per difficulty.
-
-```js
-const BASIC = [
-  { display: "50",  factors: [2, 5, 5] },     // simplifies to 5√2
-  { display: "45",  factors: [3, 3, 5] },     // simplifies to 3√5
-  { display: "72",  factors: [2, 2, 2, 3, 3] }, // simplifies to 6√2
-];
-```
-
-Each problem needs:
-
-- **`display`** — the string shown to the student in the prompt (`"50"`, `"4x²"`, `"8x³"`)
-- **`factors`** — the prime factorization as an array. Numbers are prime factors, strings are variables. Multiply everything together to sanity-check.
-- **`root`** — Extreme mode only. Set to `3` for a cube root, `4` for a fourth root. Defaults to 2 (square root) if omitted.
-
-Save the file, refresh the browser, done.
-
-### Cheat sheet
-
-| Radical | Display | Factors | Simplifies to |
-|---|---|---|---|
-| √50 | `"50"` | `[2, 5, 5]` | 5√2 |
-| √72 | `"72"` | `[2, 2, 2, 3, 3]` | 6√2 |
-| √(4x²) | `"4x²"` | `[2, 2, "x", "x"]` | 2x |
-| √(50x²) | `"50x²"` | `[2, 5, 5, "x", "x"]` | 5x√2 |
-| ∛54 | `"54"` | `[2, 3, 3, 3]` + `root: 3` | 3∛2 |
-| ∛(8x³) | `"8x³"` | `[2, 2, 2, "x", "x", "x"]` + `root: 3` | 2x |
-| ∜16 | `"16"` | `[2, 2, 2, 2]` + `root: 4` | 2 |
-
-### Adjusting the pool
-
-Each mode has a pool of factors the student can click during the placing phase. It lives on the mode config right below the problem arrays:
+Everything lives in the `MODES` object at the top of `app.js`. Each mode looks like this:
 
 ```js
-basic:    { ..., pool: [2, 3, 5, 7] },
-advanced: { ..., pool: [2, 3, 5, 7, "x", "y"] },
+basic: {
+  label: "Basic",
+  hasTimer: true,
+  hasPool: true,
+  pool: [2, 3, 5, 7],
+  bigPool: [2, 3],
+  shapes: [[2, 1], [2, 2], [2, 1, 1]],
+  roots: [2],
+  varBias: 0,
+  maxNum: 300,
+  hint: "...",
+},
 ```
 
-The pool intentionally includes distractors — if the correct radicand doesn't need a `7`, clicking `7` is a wrong pick. Add more variables (`"a"`, `"b"` are already color-styled in `CHIP_STYLE`) or higher primes (`11`, `13` are pre-styled too) if your problems need them.
+| Field | What it does |
+|---|---|
+| `pool` | The factors students can click. The generator draws from this same list, so the two can never disagree. Add `11`, `13`, `"a"`, or `"b"` — they're already color-styled. |
+| `bigPool` | Which factors are allowed as the base of a group of 3 or 4. Keeps a 4th-root problem from generating `5⁴ = 625`. |
+| `shapes` | Group sizes. `[2,1]` = one pair plus one single (3 chips). `[2,2]` = two pairs (4 chips). `[2,1,1]` = one pair plus two singles (4 chips). List a shape twice to make it twice as likely. |
+| `roots` | Which root degrees to draw from. `[2]` is square roots only; `[3,3,4]` gives cube roots twice as often as 4th roots. |
+| `varBias` | Chance from 0 to 1 of forcing at least one variable into the problem. `0` = never, `0.8` = usually. |
+| `maxNum` | Rejects a problem if the numeric part exceeds this. Keeps radicands small enough to factor mentally — raise it for a harder class, lower it for an easier one. |
+| `hasPool` | `false` pre-places the factors (Warmup). `true` makes the student build the radicand. |
+| `hasTimer` | Whether this mode is timed. |
 
-### Adjusting the timer
+**The first number in each shape is replaced by the root degree.** So `[2,1]` becomes `[3,1]` under a cube root and `[4,1]` under a 4th root. That's why the same shape list works for every mode.
 
-Basic, Advanced, and Extreme all start at 10 seconds. Change the initial value in `app.js`:
+### One constraint worth knowing about
+
+The generator rejects any problem whose leftover would still be simplifiable. A leftover exponent `r` under index `n` is only fully simplified when `gcd(r, n) = 1` — so a 4th root can't be given a leftover square, because `∜9` would still reduce to `√3`. If you add new shapes and a combination seems to never appear, this is probably why.
+
+### Timer length
+
+The clock scales with how many chips the problem has:
 
 ```js
-timeLeft: 10,   // in the `state` object
+function timeLimitFor(chipCount) {
+  return Math.max(10, Math.round(4 + chipCount * 2));
+}
 ```
+
+Three chips gets 10 seconds, four gets 12, six gets 16. Return a flat `10` if you'd rather every problem get the same time.
 
 ## Project layout
 
@@ -83,10 +81,12 @@ timeLeft: 10,   // in the `state` object
 prime-pairs/
 ├── index.html      ← page shell, loads fonts + css + script
 ├── style.css       ← all styles
-├── app.js          ← game state, logic, and rendering
-├── favicon.svg     ← little radical mark
+├── app.js          ← config, generator, game logic, rendering
+├── favicon.svg
 └── README.md
 ```
+
+`app.js` reads top to bottom: difficulty config, helpers, the problem generator, state, actions, rendering, then a single delegated click listener.
 
 ## License
 

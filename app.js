@@ -1,85 +1,83 @@
 // ============================================================================
-// Problem sets — one array per difficulty
+// Prime Pairs — radical simplification game
+//
+// Problems are generated randomly. See MODES below to tune each difficulty.
 // ============================================================================
-const WARMUP = [
-  { display: "8",   factors: [2, 2, 2] },
-  { display: "12",  factors: [2, 2, 3] },
-  { display: "18",  factors: [2, 3, 3] },
-  { display: "50",  factors: [2, 5, 5] },
-  { display: "72",  factors: [2, 2, 2, 3, 3] },
-];
 
-const BASIC = [
-  { display: "50",  factors: [2, 5, 5] },
-  { display: "45",  factors: [3, 3, 5] },
-  { display: "75",  factors: [3, 5, 5] },
-  { display: "98",  factors: [2, 7, 7] },
-  { display: "147", factors: [3, 7, 7] },
-  { display: "36",  factors: [2, 2, 3, 3] },
-  { display: "100", factors: [2, 2, 5, 5] },
-  { display: "225", factors: [3, 3, 5, 5] },
-];
-
-const ADVANCED = [
-  { display: "4x²",     factors: [2, 2, "x", "x"] },
-  { display: "9y²",     factors: [3, 3, "y", "y"] },
-  { display: "25x²",    factors: [5, 5, "x", "x"] },
-  { display: "20x²",    factors: [2, 2, 5, "x", "x"] },
-  { display: "50x²",    factors: [2, 5, 5, "x", "x"] },
-  { display: "45y²",    factors: [3, 3, 5, "y", "y"] },
-  { display: "18x²y²",  factors: [2, 3, 3, "x", "x", "y", "y"] },
-  { display: "72x²",    factors: [2, 2, 2, 3, 3, "x", "x"] },
-];
-
-const EXTREME = [
-  { display: "8",       root: 3, factors: [2, 2, 2] },
-  { display: "27",      root: 3, factors: [3, 3, 3] },
-  { display: "54",      root: 3, factors: [2, 3, 3, 3] },
-  { display: "8x³",     root: 3, factors: [2, 2, 2, "x", "x", "x"] },
-  { display: "24x³",    root: 3, factors: [2, 2, 2, 3, "x", "x", "x"] },
-  { display: "16",      root: 4, factors: [2, 2, 2, 2] },
-  { display: "48y⁴",    root: 4, factors: [2, 2, 2, 2, 3, "y", "y", "y", "y"] },
-  { display: "81x⁴y⁴",  root: 4, factors: [3, 3, 3, 3, "x", "x", "x", "x", "y", "y", "y", "y"] },
-];
-
+// ----------------------------------------------------------------------------
+// Difficulty configuration
+//
+//   pool     factors the student can click. Also the candidate set the
+//            generator draws from, so the two can never drift apart.
+//   bigPool  factors allowed as the base of a group of 3 or 4 (keeps a
+//            4th-root problem from generating something like 5⁴ = 625).
+//   shapes   group sizes. [2,1] = one pair + one single (3 chips).
+//            [2,2] = two pairs (4 chips). The first number is replaced by
+//            the root degree, so [2,1] under a cube root becomes [3,1].
+//   roots    which root degrees to draw from.
+//   varBias  chance (0-1) of forcing at least one variable into the problem.
+//   maxNum   retry generation if the numeric part exceeds this.
+// ----------------------------------------------------------------------------
 const MODES = {
   warmup: {
     label: "Warmup",
-    problems: WARMUP,
     hasTimer: false,
     hasPool: false,
-    pool: [],
+    pool: [2, 3, 5, 7],
+    bigPool: [2, 3],
+    shapes: [[2, 1], [2, 1], [2, 2]],
+    roots: [2],
+    varBias: 0,
+    maxNum: 250,
     hint: "match two — pairs escape the radical and multiply into the coefficient.",
   },
   basic: {
     label: "Basic",
-    problems: BASIC,
     hasTimer: true,
     hasPool: true,
     pool: [2, 3, 5, 7],
-    hint: "break the radicand into primes first, then pair them out. wrong picks cost a second.",
+    bigPool: [2, 3],
+    shapes: [[2, 1], [2, 2], [2, 1, 1]],
+    roots: [2],
+    varBias: 0,
+    maxNum: 300,
+    hint: "build the radicand from the pool, then pair the primes out. wrong picks cost a second.",
   },
   advanced: {
     label: "Advanced",
-    problems: ADVANCED,
     hasTimer: true,
     hasPool: true,
     pool: [2, 3, 5, 7, "x", "y"],
+    bigPool: [2, 3, "x", "y"],
+    shapes: [[2, 1], [2, 2], [2, 2, 1]],
+    roots: [2],
+    varBias: 0.8,
+    maxNum: 200,
     hint: "variables factor like primes. x² is two x's. pair them just the same.",
   },
   extreme: {
     label: "Extreme",
-    problems: EXTREME,
     hasTimer: true,
     hasPool: true,
     pool: [2, 3, 5, 7, "x", "y"],
+    bigPool: [2, 3, "x", "y"],
+    shapes: [[2, 1], [2, 2], [2, 1, 1]],
+    roots: [3, 3, 4],
+    varBias: 0.6,
+    maxNum: 250,
     hint: "cube root (∛) groups three matching. fourth root (∜) groups four.",
   },
 };
 
-// ============================================================================
-// Chip color palette
-// ============================================================================
+// Seconds on the clock, scaled by how many chips the problem has.
+// Return a flat 10 here if you'd rather every problem get the same time.
+function timeLimitFor(chipCount) {
+  return Math.max(10, Math.round(4 + chipCount * 2));
+}
+
+// ----------------------------------------------------------------------------
+// Chip colors — each factor gets its own identity so matches read at a glance
+// ----------------------------------------------------------------------------
 const CHIP_STYLE = {
   2:  { bg: "#F0857A", text: "#4A160D", border: "#D25546" },
   3:  { bg: "#5FA995", text: "#183A2F", border: "#3D8570" },
@@ -93,84 +91,139 @@ const CHIP_STYLE = {
   b:  { bg: "#B7C6A6", text: "#2A3618", border: "#7E9067" },
 };
 
-// ============================================================================
-// Helpers
-// ============================================================================
 const ROOT_MARK = { 2: "√", 3: "∛", 4: "∜" };
 const SUPS = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
 
-function sup(n) {
-  if (n === 1) return "";
-  return String(n).split("").map(d => SUPS[+d] || "").join("");
-}
-
-function isNumeric(v) { return typeof v === "number"; }
-function getStyle(v) { return CHIP_STYLE[v] || CHIP_STYLE[2]; }
+// ----------------------------------------------------------------------------
+// Small helpers
+// ----------------------------------------------------------------------------
+const randInt = (n) => Math.floor(Math.random() * n);
+const pick = (arr) => arr[randInt(arr.length)];
+const isNumeric = (v) => typeof v === "number";
+const isVar = (v) => typeof v === "string";
+const getStyle = (v) => CHIP_STYLE[v] || CHIP_STYLE[2];
+const sup = (n) => (n === 1 ? "" : String(n).split("").map((d) => SUPS[+d] || "").join(""));
 
 let idCounter = 0;
-function uid() { return "c" + (++idCounter); }
+const uid = () => "c" + ++idCounter;
 
-function factorize(factors, root) {
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = randInt(i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Group a flat factor list into { "2": 3, "x": 2 } counts
+function countFactors(factors) {
   const counts = {};
-  factors.forEach(f => counts[f] = (counts[f] || 0) + 1);
+  factors.forEach((f) => (counts[f] = (counts[f] || 0) + 1));
+  return counts;
+}
+
+// Split factors into what escapes the radical vs what stays inside
+function factorize(factors, root) {
+  const counts = countFactors(factors);
   const outside = {};
   const inside = {};
-  Object.keys(counts).forEach(k => {
-    const key = /^\d+$/.test(k) ? +k : k;
+  Object.keys(counts).forEach((k) => {
     const n = counts[k];
     const out = Math.floor(n / root);
     const rem = n % root;
-    if (out) outside[key] = out;
-    if (rem) inside[key] = rem;
+    if (out) outside[k] = out;
+    if (rem) inside[k] = rem;
   });
   return { outside, inside };
 }
 
-function formatFactored(map) {
+// Turn a { base: power } map into a display string like "50x²"
+function formatMap(map) {
   let num = 1;
-  const varParts = [];
-  Object.keys(map).sort().forEach(k => {
-    const p = map[k];
-    if (/^\d+$/.test(k)) num *= Math.pow(+k, p);
-    else varParts.push(k + sup(p));
+  const vars = [];
+  Object.keys(map).sort().forEach((k) => {
+    if (/^\d+$/.test(k)) num *= Math.pow(+k, map[k]);
+    else vars.push(k + sup(map[k]));
   });
-  return { num, varString: varParts.join("") };
+  if (!vars.length) return String(num);
+  return (num > 1 ? String(num) : "") + vars.join("");
 }
 
-function formatCoef(coef) {
-  const varParts = [];
-  Object.keys(coef.vars).sort().forEach(v => {
-    if (coef.vars[v] > 0) varParts.push(v + sup(coef.vars[v]));
-  });
-  let s = "";
-  if (coef.num > 1) s = String(coef.num);
-  s += varParts.join("");
-  return s;
+// The radicand as the student sees it, e.g. "50x²"
+const buildDisplay = (factors) => formatMap(countFactors(factors));
+
+// Numeric part only — used to keep generated numbers from blowing up
+function numericValue(factors) {
+  return factors.reduce((acc, f) => (isNumeric(f) ? acc * f : acc), 1);
 }
 
-// Jump directly to the final simplified state (used by the reveal button)
-function computeFinal(problem, rootDeg) {
-  const { outside, inside } = factorize(problem.factors, rootDeg);
-  const coef = { num: 1, vars: {} };
-  Object.keys(outside).forEach(k => {
-    if (/^\d+$/.test(k)) coef.num *= Math.pow(+k, outside[k]);
-    else coef.vars[k] = (coef.vars[k] || 0) + outside[k];
-  });
-  const chips = [];
-  Object.keys(inside).forEach(k => {
-    const key = /^\d+$/.test(k) ? +k : k;
-    for (let i = 0; i < inside[k]; i++) chips.push({ id: uid(), value: key });
-  });
-  return { coef, chips };
+// ----------------------------------------------------------------------------
+// Problem generation
+// ----------------------------------------------------------------------------
+function generateProblem(mode, avoidDisplay) {
+  const cfg = MODES[mode];
+
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const root = pick(cfg.roots);
+    const shape = pick(cfg.shapes).slice();
+    shape[0] = root; // the leading group always matches the root degree
+
+    // A leftover exponent r under index n is only fully simplified when
+    // gcd(r, n) === 1. Without this, a 4th root with a leftover square would
+    // produce something like ∜9, which still reduces to √3.
+    if (shape.slice(1).some((g) => gcd(g, root) > 1)) continue;
+
+    // Assign a distinct base to each group. Groups of 3+ draw from bigPool
+    // so we don't end up with something like 5⁴.
+    const used = [];
+    const bases = [];
+    let ok = true;
+
+    for (const size of shape) {
+      const source = size >= 3 ? cfg.bigPool : cfg.pool;
+      const available = source.filter((v) => !used.includes(v));
+      if (!available.length) { ok = false; break; }
+      const base = pick(available);
+      used.push(base);
+      bases.push(base);
+    }
+    if (!ok) continue;
+
+    // Build the flat factor list
+    const factors = [];
+    bases.forEach((base, i) => {
+      for (let n = 0; n < shape[i]; n++) factors.push(base);
+    });
+
+    // Constraint: numeric part stays readable
+    if (numericValue(factors) > cfg.maxNum) continue;
+
+    // Constraint: honor the variable bias
+    const hasVar = factors.some(isVar);
+    if (cfg.varBias > 0 && !hasVar && Math.random() < cfg.varBias) continue;
+
+    const display = buildDisplay(factors);
+
+    // Constraint: don't repeat the problem we just showed
+    if (display === avoidDisplay) continue;
+
+    return { display, factors: shuffle(factors), root };
+  }
+
+  // Fallback if constraints were somehow unsatisfiable
+  return { display: "50", factors: [2, 5, 5], root: 2 };
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // State
-// ============================================================================
+// ----------------------------------------------------------------------------
 const state = {
   mode: "warmup",
-  levelIdx: 0,
-  phase: "pairing", // placing | pairing | done
+  problem: null,
+  phase: "pairing",       // placing | pairing | done
   placedChips: [],
   coefficient: { num: 1, vars: {} },
   selectedIds: [],
@@ -179,32 +232,39 @@ const state = {
   wrongPlacedId: null,
   pairsMade: 0,
   coefPulse: false,
-  timeLeft: 10,
+  timeLeft: 0,
+  timeLimit: 0,
   revealed: false,
+  solved: 0,
+  streak: 0,
+  best: 0,
 };
 
-// Increments on every level reset — used to invalidate stale setTimeout callbacks
-let levelToken = 0;
+// Bumped on every new problem so stale animation callbacks can bail out
+let token = 0;
 
-// Accessors that read state derivatives
-function config()      { return MODES[state.mode]; }
-function problem()     { return config().problems[state.levelIdx] || config().problems[0]; }
-function rootDeg()     { return state.mode === "extreme" ? (problem().root || 2) : 2; }
-function rootSym()     { return ROOT_MARK[rootDeg()] || "√"; }
+const cfg = () => MODES[state.mode];
+const rootDeg = () => state.problem.root;
+const rootSym = () => ROOT_MARK[rootDeg()] || "√";
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Actions
-// ============================================================================
-function resetLevel() {
-  levelToken++;
-  const p = problem();
-  if (state.mode === "warmup") {
-    state.placedChips = p.factors.map(v => ({ id: uid(), value: v }));
-    state.phase = "pairing";
-  } else {
+// ----------------------------------------------------------------------------
+function loadProblem(newProblem) {
+  token++;
+  if (newProblem) {
+    state.problem = generateProblem(state.mode, state.problem && state.problem.display);
+  }
+  const p = state.problem;
+
+  if (cfg().hasPool) {
     state.placedChips = [];
     state.phase = "placing";
+  } else {
+    state.placedChips = p.factors.map((v) => ({ id: uid(), value: v }));
+    state.phase = "pairing";
   }
+
   state.coefficient = { num: 1, vars: {} };
   state.selectedIds = [];
   state.pairingIds = [];
@@ -212,288 +272,277 @@ function resetLevel() {
   state.wrongPlacedId = null;
   state.pairsMade = 0;
   state.coefPulse = false;
-  state.timeLeft = 10;
   state.revealed = false;
+  state.timeLimit = timeLimitFor(p.factors.length);
+  state.timeLeft = state.timeLimit;
+
   render();
 }
 
 function switchMode(m) {
   if (m === state.mode) return;
   state.mode = m;
-  state.levelIdx = 0;
-  resetLevel();
+  state.streak = 0;
+  loadProblem(true);
 }
-
-function goNext() {
-  const total = config().problems.length;
-  state.levelIdx = (state.levelIdx + 1) % total;
-  resetLevel();
-}
-
-function restart() { resetLevel(); }
 
 function handleNextOrReveal() {
-  if (state.phase === "done") { goNext(); return; }
-  levelToken++; // invalidate any pending pair-out setTimeouts
-  const { coef, chips } = computeFinal(problem(), rootDeg());
+  if (state.phase === "done") { loadProblem(true); return; }
+
+  token++; // cancel any in-flight pair animation
+  const { outside, inside } = factorize(state.problem.factors, rootDeg());
+
+  const coef = { num: 1, vars: {} };
+  Object.keys(outside).forEach((k) => {
+    if (/^\d+$/.test(k)) coef.num *= Math.pow(+k, outside[k]);
+    else coef.vars[k] = outside[k];
+  });
+
+  const chips = [];
+  Object.keys(inside).forEach((k) => {
+    const value = /^\d+$/.test(k) ? +k : k;
+    for (let i = 0; i < inside[k]; i++) chips.push({ id: uid(), value });
+  });
+
   state.coefficient = coef;
   state.placedChips = chips;
   state.selectedIds = [];
   state.pairingIds = [];
   state.phase = "done";
   state.revealed = true;
+  state.streak = 0;
   render();
 }
 
 function handlePoolClick(value) {
-  if (state.phase !== "placing") return;
-  if (state.pairingIds.length > 0) return;
-  const p = problem();
-  const required = p.factors.filter(f => f === value).length;
-  const placed = state.placedChips.filter(c => c.value === value).length;
-  if (placed < required) {
+  if (state.phase !== "placing" || state.pairingIds.length) return;
+
+  const needed = state.problem.factors.filter((f) => f === value).length;
+  const placed = state.placedChips.filter((c) => c.value === value).length;
+
+  if (placed < needed) {
     state.placedChips.push({ id: uid(), value });
-    if (state.placedChips.length === p.factors.length) {
+    if (state.placedChips.length === state.problem.factors.length) {
       state.phase = "pairing";
     }
     render();
   } else {
     state.wrongPoolValue = value;
-    if (config().hasTimer) state.timeLeft = Math.max(0, state.timeLeft - 1);
+    if (cfg().hasTimer) state.timeLeft = Math.max(0, state.timeLeft - 1);
     render();
-    setTimeout(() => {
-      state.wrongPoolValue = null;
-      render();
-    }, 400);
+    setTimeout(() => { state.wrongPoolValue = null; render(); }, 400);
   }
 }
 
 function handlePlacedClick(id) {
-  if (state.phase !== "pairing") return;
-  if (state.pairingIds.length > 0) return;
-  const chip = state.placedChips.find(c => c.id === id);
+  if (state.phase !== "pairing" || state.pairingIds.length) return;
+
+  const chip = state.placedChips.find((c) => c.id === id);
   if (!chip) return;
 
+  // Tapping a selected chip deselects it — free, no penalty
   if (state.selectedIds.includes(id)) {
-    state.selectedIds = state.selectedIds.filter(i => i !== id);
-    render();
-    return;
+    state.selectedIds = state.selectedIds.filter((i) => i !== id);
+    return render();
   }
-  if (state.selectedIds.length === 0) {
+
+  if (!state.selectedIds.length) {
     state.selectedIds = [id];
-    render();
-    return;
+    return render();
   }
-  const first = state.placedChips.find(c => c.id === state.selectedIds[0]);
+
+  const first = state.placedChips.find((c) => c.id === state.selectedIds[0]);
   if (!first || first.value !== chip.value) {
     state.wrongPlacedId = id;
-    if (config().hasTimer) state.timeLeft = Math.max(0, state.timeLeft - 1);
+    if (cfg().hasTimer) state.timeLeft = Math.max(0, state.timeLeft - 1);
     render();
-    setTimeout(() => {
-      state.wrongPlacedId = null;
-      render();
-    }, 400);
+    setTimeout(() => { state.wrongPlacedId = null; render(); }, 400);
     return;
   }
 
-  const newSelection = state.selectedIds.concat(id);
-  const rd = rootDeg();
-  if (newSelection.length === rd) {
-    state.pairingIds = newSelection;
-    state.selectedIds = [];
-    render();
-    const val = chip.value;
-    const myToken = levelToken;
-    setTimeout(() => {
-      if (myToken !== levelToken) return; // Level was reset — abort
-      state.placedChips = state.placedChips.filter(c => !newSelection.includes(c.id));
-      if (isNumeric(val)) state.coefficient.num *= val;
-      else state.coefficient.vars[val] = (state.coefficient.vars[val] || 0) + 1;
-      state.pairsMade++;
-      state.pairingIds = [];
-      state.coefPulse = true;
-      render();
-      checkCompletion();
-      setTimeout(() => {
-        if (myToken !== levelToken) return;
-        state.coefPulse = false;
-        render();
-      }, 350);
-    }, 600);
-  } else {
-    state.selectedIds = newSelection;
-    render();
+  const selection = state.selectedIds.concat(id);
+  if (selection.length < rootDeg()) {
+    state.selectedIds = selection;
+    return render();
   }
+
+  // Full group — animate it out, then fold the value into the coefficient
+  state.pairingIds = selection;
+  state.selectedIds = [];
+  render();
+
+  const value = chip.value;
+  const myToken = token;
+  setTimeout(() => {
+    if (myToken !== token) return;
+    state.placedChips = state.placedChips.filter((c) => !selection.includes(c.id));
+    if (isNumeric(value)) state.coefficient.num *= value;
+    else state.coefficient.vars[value] = (state.coefficient.vars[value] || 0) + 1;
+    state.pairsMade++;
+    state.pairingIds = [];
+    state.coefPulse = true;
+    render();
+    checkCompletion();
+    setTimeout(() => {
+      if (myToken !== token) return;
+      state.coefPulse = false;
+      render();
+    }, 350);
+  }, 600);
 }
 
 function checkCompletion() {
-  if (state.phase !== "pairing") return;
-  const rd = rootDeg();
-  if (state.placedChips.length === 0) {
-    if (state.pairsMade > 0) {
-      state.phase = "done";
-      render();
-    }
-    return;
-  }
-  const counts = {};
-  state.placedChips.forEach(c => counts[c.value] = (counts[c.value] || 0) + 1);
-  const anyGroup = Object.values(counts).some(c => c >= rd);
-  if (!anyGroup) {
-    state.phase = "done";
-    render();
-  }
+  if (state.phase !== "pairing" || !state.pairsMade) return;
+
+  const counts = countFactors(state.placedChips.map((c) => c.value));
+  const anyGroupLeft = Object.values(counts).some((n) => n >= rootDeg());
+  if (state.placedChips.length && anyGroupLeft) return;
+
+  state.phase = "done";
+  state.solved++;
+  const clean = !state.revealed && (!cfg().hasTimer || state.timeLeft > 0);
+  state.streak = clean ? state.streak + 1 : 0;
+  state.best = Math.max(state.best, state.streak);
+  render();
 }
 
-// ============================================================================
-// Timer — one global interval, gated by state
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Timer — one interval for the whole app, gated by state
+// ----------------------------------------------------------------------------
 setInterval(() => {
-  if (!config().hasTimer) return;
-  if (state.phase === "done") return;
-  if (state.timeLeft <= 0) return;
+  if (!cfg().hasTimer || state.phase === "done" || state.timeLeft <= 0) return;
   state.timeLeft = Math.max(0, +(state.timeLeft - 0.1).toFixed(1));
-  updateTimerDisplay();
+  updateTimer();
 }, 100);
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Rendering
-// ============================================================================
+// ----------------------------------------------------------------------------
+const SKELETON = `
+  <div class="app">
+    <div class="app-header">
+      <div class="title-block">
+        <div class="app-title">Prime Pairs</div>
+        <div class="app-sub">simplify radicals, one pair at a time</div>
+      </div>
+      <div class="level-badge" id="badge"></div>
+    </div>
+    <div class="tabs" id="tabs" role="tablist" aria-label="difficulty"></div>
+    <div class="prompt-row">
+      <div class="prompt" id="prompt"></div>
+      <div class="timer" id="timer"><span id="timer-value"></span><span class="timer-unit">s</span></div>
+    </div>
+    <div class="timer-bar-wrap" id="timer-bar-wrap"><div class="timer-bar" id="timer-bar"></div></div>
+    <div class="stage">
+      <div class="radical-row">
+        <div class="coefficient" id="coefficient"></div>
+        <div class="radical-mark" id="radical-mark"></div>
+        <div class="radicand-box" id="radicand-box"></div>
+      </div>
+      <div id="feedback-area"></div>
+      <div id="pool-area"></div>
+      <div class="actions" id="actions"></div>
+    </div>
+    <div class="instructions" id="instructions"></div>
+  </div>
+`;
+
 function render() {
   const root = document.getElementById("root");
+  if (!root.querySelector(".app")) root.innerHTML = SKELETON;
 
-  // On first call, build the skeleton once
-  if (!root.querySelector(".app")) {
-    root.innerHTML = `
-      <div class="app">
-        <div class="app-header">
-          <div class="title-block">
-            <div class="app-title">Prime Pairs</div>
-            <div class="app-sub">simplify radicals, one pair at a time</div>
-          </div>
-          <div class="level-badge" id="level-badge"></div>
-        </div>
-        <div class="tabs" id="tabs" role="tablist" aria-label="difficulty"></div>
-        <div class="prompt-row">
-          <div class="prompt" id="prompt"></div>
-          <div class="timer" id="timer">
-            <span id="timer-value"></span><span class="timer-unit">s</span>
-          </div>
-        </div>
-        <div class="timer-bar-wrap" id="timer-bar-wrap">
-          <div class="timer-bar" id="timer-bar"></div>
-        </div>
-        <div class="stage">
-          <div class="radical-row" id="radical-row">
-            <div class="coefficient" id="coefficient"></div>
-            <div class="radical-mark" id="radical-mark"></div>
-            <div class="radicand-box" id="radicand-box"></div>
-          </div>
-          <div id="feedback-area"></div>
-          <div id="pool-area"></div>
-          <div class="actions" id="actions"></div>
-        </div>
-        <div class="instructions" id="instructions"></div>
-      </div>
-    `;
-  }
-
-  renderHeader();
+  renderBadge();
   renderTabs();
-  renderPrompt();
+  document.getElementById("prompt").innerHTML =
+    `simplify<span class="target">${rootSym()}${state.problem.display}</span>`;
   renderTimerSection();
-  renderRadicalRow();
+  renderRadical();
   renderFeedback();
   renderPool();
-  renderButtons();
-  renderInstructions();
+  renderActions();
+  document.getElementById("instructions").textContent = cfg().hint;
 }
 
-function renderHeader() {
-  document.getElementById("level-badge").textContent =
-    `${state.levelIdx + 1} / ${config().problems.length}`;
+function renderBadge() {
+  const parts = [`solved ${state.solved}`];
+  if (state.streak > 1) parts.push(`streak ${state.streak}`);
+  else if (state.best > 1) parts.push(`best ${state.best}`);
+  document.getElementById("badge").textContent = parts.join(" · ");
 }
 
 function renderTabs() {
-  const html = Object.keys(MODES).map(m => {
+  document.getElementById("tabs").innerHTML = Object.keys(MODES).map((m) => {
     const active = state.mode === m;
-    return `<button role="tab" aria-selected="${active}" ` +
-           `class="tab${active ? " active" : ""}" ` +
-           `data-action="switch-mode" data-value="${m}">${MODES[m].label}</button>`;
+    return `<button role="tab" aria-selected="${active}" class="tab${active ? " active" : ""}"
+      data-action="mode" data-value="${m}">${MODES[m].label}</button>`;
   }).join("");
-  document.getElementById("tabs").innerHTML = html;
-}
-
-function renderPrompt() {
-  document.getElementById("prompt").innerHTML =
-    `simplify<span class="target">${rootSym()}${problem().display}</span>`;
 }
 
 function renderTimerSection() {
-  const timer = document.getElementById("timer");
-  const bar = document.getElementById("timer-bar-wrap");
-  if (config().hasTimer) {
-    timer.style.display = "";
-    bar.style.display = "";
-    updateTimerDisplay();
-  } else {
-    timer.style.display = "none";
-    bar.style.display = "none";
-  }
+  const show = cfg().hasTimer;
+  document.getElementById("timer").style.display = show ? "" : "none";
+  document.getElementById("timer-bar-wrap").style.display = show ? "" : "none";
+  if (show) updateTimer();
 }
 
-function updateTimerDisplay() {
+function updateTimer() {
   const value = document.getElementById("timer-value");
   const bar = document.getElementById("timer-bar");
   const timer = document.getElementById("timer");
   if (!value || !bar || !timer) return;
+
   value.textContent = state.timeLeft.toFixed(1);
-  bar.style.width = `${Math.max(0, state.timeLeft) * 10}%`;
+  bar.style.width = `${(state.timeLeft / state.timeLimit) * 100}%`;
   const warn = state.timeLeft <= 3;
   timer.classList.toggle("warn", warn);
   bar.classList.toggle("warn", warn);
 }
 
-function renderRadicalRow() {
+function renderRadical() {
   const coefEl = document.getElementById("coefficient");
   const markEl = document.getElementById("radical-mark");
-  const boxEl  = document.getElementById("radicand-box");
+  const boxEl = document.getElementById("radicand-box");
 
   const showRadical = state.phase === "placing" || state.placedChips.length > 0;
-  const coefStr = formatCoef(state.coefficient) || (!showRadical ? "1" : "");
+  const coefStr = formatMap(coefVarsAsMap()) || (!showRadical ? "1" : "");
 
-  coefEl.textContent = coefStr;
-  coefEl.className = "coefficient" +
-    (state.coefPulse ? " pulse" : "") +
-    (!showRadical ? " solo" : "");
+  coefEl.textContent = showRadical && coefStr === "1" ? "" : coefStr;
+  coefEl.className = `coefficient${state.coefPulse ? " pulse" : ""}${showRadical ? "" : " solo"}`;
 
   markEl.style.display = showRadical ? "" : "none";
   boxEl.style.display = showRadical ? "" : "none";
+  if (!showRadical) return;
 
-  if (showRadical) {
-    markEl.textContent = rootSym();
-    boxEl.className = "radicand-box" + (state.phase === "placing" ? " placing" : "");
-    reconcileChips(boxEl);
-  }
+  markEl.textContent = rootSym();
+  boxEl.className = `radicand-box${state.phase === "placing" ? " placing" : ""}`;
+  reconcileChips(boxEl);
 }
 
-// Add/update/remove chip DOM nodes without rebuilding — preserves CSS animations
+// Present the live coefficient in the same { base: power } shape formatMap wants
+function coefVarsAsMap() {
+  const map = {};
+  if (state.coefficient.num > 1) map[state.coefficient.num] = 1;
+  Object.keys(state.coefficient.vars).forEach((v) => {
+    if (state.coefficient.vars[v] > 0) map[v] = state.coefficient.vars[v];
+  });
+  return map;
+}
+
+// Update chip nodes in place rather than rebuilding — preserves CSS animations
 function reconcileChips(container) {
   const existing = {};
-  Array.from(container.children).forEach(el => {
-    const id = el.dataset && el.dataset.id;
-    if (id) existing[id] = el;
+  Array.from(container.children).forEach((el) => {
+    if (el.dataset && el.dataset.id) existing[el.dataset.id] = el;
   });
 
   const seen = new Set();
-  state.placedChips.forEach(chip => {
+  state.placedChips.forEach((chip) => {
     seen.add(chip.id);
     let el = existing[chip.id];
     if (!el) {
-      // New chip — build and append
       el = document.createElement("button");
       el.className = "chip placed";
-      el.dataset.action = "placed-click";
+      el.dataset.action = "chip";
       el.dataset.id = chip.id;
       const s = getStyle(chip.value);
       el.style.backgroundColor = s.bg;
@@ -503,29 +552,24 @@ function reconcileChips(container) {
       el.setAttribute("aria-label", `factor ${chip.value}`);
       container.appendChild(el);
     }
-    // Update dynamic classes
     el.classList.toggle("selected", state.selectedIds.includes(chip.id));
     el.classList.toggle("wrong", state.wrongPlacedId === chip.id);
     el.classList.toggle("pairing", state.pairingIds.includes(chip.id));
-    el.disabled = state.phase === "placing" || state.phase === "done";
+    el.disabled = state.phase !== "pairing";
   });
 
-  // Remove any chips no longer in state
-  Object.keys(existing).forEach(id => {
-    if (!seen.has(id)) existing[id].remove();
-  });
+  Object.keys(existing).forEach((id) => { if (!seen.has(id)) existing[id].remove(); });
 
-  // Placeholder inside the radicand during placing phase
-  const empty = container.querySelector(".radicand-empty");
-  if (state.placedChips.length === 0 && state.phase === "placing") {
-    if (!empty) {
-      const e = document.createElement("span");
-      e.className = "radicand-empty";
-      e.textContent = "place primes below";
-      container.appendChild(e);
+  const placeholder = container.querySelector(".radicand-empty");
+  if (!state.placedChips.length && state.phase === "placing") {
+    if (!placeholder) {
+      const el = document.createElement("span");
+      el.className = "radicand-empty";
+      el.textContent = "place primes below";
+      container.appendChild(el);
     }
-  } else if (empty) {
-    empty.remove();
+  } else if (placeholder) {
+    placeholder.remove();
   }
 }
 
@@ -534,98 +578,76 @@ function renderFeedback() {
   const rd = rootDeg();
   const sym = rootSym();
 
-  if (state.phase === "done") {
-    const { outside, inside } = factorize(problem().factors, rd);
-    const outParts = formatFactored(outside);
-    const inParts = formatFactored(inside);
-    let coefStr = outParts.num > 1 ? String(outParts.num) : "";
-    coefStr += outParts.varString;
-    let radStr = inParts.num > 1 ? String(inParts.num) : "";
-    radStr += inParts.varString;
-    const answer = !radStr ? (coefStr || "1") : `${coefStr}${sym}${radStr}`;
-
-    let bonus = "";
-    if (!state.revealed && config().hasTimer && state.timeLeft > 0) {
-      bonus = `<span class="bonus">nice — ${state.timeLeft.toFixed(1)}s to spare</span>`;
-    } else if (!state.revealed && config().hasTimer && state.timeLeft === 0) {
-      bonus = `<span class="bonus">solved with no time to spare</span>`;
-    } else if (state.revealed) {
-      bonus = `<span class="bonus">answer shown — reset to try again</span>`;
-    }
-
-    area.innerHTML =
-      `<div class="answer${state.revealed ? " revealed" : ""}">` +
-      `${sym}${problem().display}<span class="eq">=</span>${answer}${bonus}` +
-      `</div>`;
-  } else {
+  if (state.phase !== "done") {
     let text;
     if (state.phase === "placing") {
-      text = `tap primes from the pool to build ${sym}${problem().display}`;
-    } else if (state.selectedIds.length === 0) {
-      text = rd === 2
-        ? "tap two matching factors"
-        : `tap ${rd} matching factors to group them`;
+      text = `tap primes from the pool to build ${sym}${state.problem.display}`;
+    } else if (!state.selectedIds.length) {
+      text = rd === 2 ? "tap two matching factors"
+                      : `tap ${rd} matching factors to group them`;
     } else {
       text = `${state.selectedIds.length} of ${rd} — pick ${rd - state.selectedIds.length} more matching`;
     }
     area.innerHTML = `<div class="feedback">${text}</div>`;
+    return;
   }
+
+  const { outside, inside } = factorize(state.problem.factors, rd);
+  const coefStr = formatMap(outside);
+  const radStr = Object.keys(inside).length ? formatMap(inside) : "";
+  const answer = radStr ? `${coefStr === "1" ? "" : coefStr}${sym}${radStr}` : coefStr;
+
+  let bonus = "";
+  if (state.revealed) bonus = "answer shown — reset to try again";
+  else if (cfg().hasTimer && state.timeLeft > 0) bonus = `nice — ${state.timeLeft.toFixed(1)}s to spare`;
+  else if (cfg().hasTimer) bonus = "solved with no time to spare";
+
+  area.innerHTML =
+    `<div class="answer${state.revealed ? " revealed" : ""}">` +
+    `${sym}${state.problem.display}<span class="eq">=</span>${answer}` +
+    (bonus ? `<span class="bonus">${bonus}</span>` : "") +
+    `</div>`;
 }
 
 function renderPool() {
   const area = document.getElementById("pool-area");
-  if (!config().hasPool || state.phase !== "placing") {
+  if (!cfg().hasPool || state.phase !== "placing") {
     area.innerHTML = "";
     return;
   }
-  const html = config().pool.map(v => {
+  const chips = cfg().pool.map((v) => {
     const s = getStyle(v);
-    const wrong = state.wrongPoolValue === v ? " wrong" : "";
-    return `<button class="chip${wrong}" ` +
-           `data-action="pool-click" data-value="${v}" ` +
-           `style="background-color: ${s.bg}; color: ${s.text}; border-color: ${s.border};" ` +
-           `aria-label="pool ${v}">${v}</button>`;
+    return `<button class="chip${state.wrongPoolValue === v ? " wrong" : ""}"
+      data-action="pool" data-value="${v}"
+      style="background-color:${s.bg};color:${s.text};border-color:${s.border}"
+      aria-label="pool ${v}">${v}</button>`;
   }).join("");
-  area.innerHTML =
-    `<div class="pool"><div class="pool-label">pool</div>` +
-    `<div class="pool-chips">${html}</div></div>`;
+  area.innerHTML = `<div class="pool"><div class="pool-label">pool</div>
+    <div class="pool-chips">${chips}</div></div>`;
 }
 
-function renderButtons() {
-  const isLast = state.levelIdx === config().problems.length - 1;
-  const nextLabel = state.phase === "done"
-    ? (isLast ? "start over →" : "next →")
-    : "reveal →";
+function renderActions() {
   document.getElementById("actions").innerHTML =
     `<button class="btn" data-action="reset">reset</button>` +
-    `<button class="btn primary" data-action="next">${nextLabel}</button>`;
+    `<button class="btn primary" data-action="next">${state.phase === "done" ? "next →" : "reveal →"}</button>`;
 }
 
-function renderInstructions() {
-  document.getElementById("instructions").textContent = config().hint;
-}
-
-// ============================================================================
-// Event delegation — one listener handles every click
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Events — one delegated listener for the whole app
+// ----------------------------------------------------------------------------
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-action]");
   if (!el) return;
-  const action = el.dataset.action;
-  const value = el.dataset.value;
-  const id = el.dataset.id;
+  const { action, value, id } = el.dataset;
 
-  if (action === "switch-mode") switchMode(value);
-  else if (action === "pool-click") {
-    const v = /^\d+$/.test(value) ? +value : value;
-    handlePoolClick(v);
-  }
-  else if (action === "placed-click") handlePlacedClick(id);
-  else if (action === "reset") restart();
+  if (action === "mode") switchMode(value);
+  else if (action === "pool") handlePoolClick(/^\d+$/.test(value) ? +value : value);
+  else if (action === "chip") handlePlacedClick(id);
+  else if (action === "reset") loadProblem(false);
   else if (action === "next") handleNextOrReveal();
 });
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Init
-// ============================================================================
-resetLevel();
+// ----------------------------------------------------------------------------
+loadProblem(true);
