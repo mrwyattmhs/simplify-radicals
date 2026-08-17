@@ -10,14 +10,19 @@ Problems are generated randomly, so the game never runs out.
 
 Four difficulty modes across a segmented tab bar at the top:
 
-- **Warmup** — the prime factors are already placed under the radical. Students just pair them out. No timer.
-- **Basic** — students click primes from a pool at the bottom to build the radicand themselves, then pair them. Timed; wrong picks shake and cost a second.
-- **Advanced** — same as Basic, but the pool now includes variables (`x`, `y`). An expression like `4x²` means the student clicks `2` twice and `x` twice.
-- **Extreme** — cube roots (∛) and 4th roots (∜), with and without variables. Students must group **three** or **four** matching factors instead of two.
+**Practice modes** (untimed):
 
-The header tracks how many problems you've solved and your current streak. Using **reveal →** breaks the streak; so does finishing after the clock hits zero.
+- **Warmup** — the prime factors are already placed under the radical. Students just pair them out.
+- **Basic** — students click primes from a pool at the bottom to build the radicand themselves, then pair them. Numbers up to 300.
 
-If a student gets stuck, **reveal →** jumps straight to the correct answer, then becomes **next →** to move on. **reset** restarts the current problem. The timer stops at 0 but the game keeps going.
+Practice tracks solved count and streak. **reveal →** jumps to the answer (and breaks the streak), then becomes **next →**. **reset** restarts the current problem.
+
+**Sprint modes** (90-second timed runs):
+
+- **Advanced** — square roots with variables (`x`, `y`), numbers up to 400.
+- **Extreme** — square, cube (∛), and 4th (∜) roots with variables, numbers up to 1000. Cube roots need **three** matching factors to escape; 4th roots need **four**.
+
+Press **start sprint**, solve as many as you can before the clock runs out. Score = problems solved. A wrong pick from the pool costs **3 seconds**; pairing mistakes just shake. **skip →** abandons a problem (the clock keeps running). When time expires you can finish the problem you're on, but it won't count. The header remembers your session best per mode.
 
 ## Running it
 
@@ -55,7 +60,14 @@ basic: {
 | `varBias` | Chance from 0 to 1 of forcing at least one variable into the problem. `0` = never, `0.8` = usually. |
 | `maxNum` | Rejects a problem if the numeric part exceeds this. Keeps radicands small enough to factor mentally — raise it for a harder class, lower it for an easier one. |
 | `hasPool` | `false` pre-places the factors (Warmup). `true` makes the student build the radicand. |
-| `hasTimer` | Whether this mode is timed. |
+| `sprint` | `true` makes this a 90-second sprint mode with a score; `false` is untimed practice. |
+
+Sprint length and the wrong-pick penalty are the two constants at the very top of `app.js`:
+
+```js
+const SPRINT_SECONDS = 90;
+const WRONG_PICK_PENALTY = 3;
+```
 
 **The first number in each shape is replaced by the root degree.** So `[2,1]` becomes `[3,1]` under a cube root and `[4,1]` under a 4th root. That's why the same shape list works for every mode.
 
@@ -63,17 +75,6 @@ basic: {
 
 The generator rejects any problem whose leftover would still be simplifiable. A leftover exponent `r` under index `n` is only fully simplified when `gcd(r, n) = 1` — so a 4th root can't be given a leftover square, because `∜9` would still reduce to `√3`. If you add new shapes and a combination seems to never appear, this is probably why.
 
-### Timer length
-
-The clock scales with how many chips the problem has:
-
-```js
-function timeLimitFor(chipCount) {
-  return Math.max(10, Math.round(4 + chipCount * 2));
-}
-```
-
-Three chips gets 10 seconds, four gets 12, six gets 16. Return a flat `10` if you'd rather every problem get the same time.
 
 ## Project layout
 

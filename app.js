@@ -1,27 +1,30 @@
 // ============================================================================
 // Prime Pairs — radical simplification game
 //
-// Problems are generated randomly. See MODES below to tune each difficulty.
+// Warmup + Basic are untimed practice. Advanced + Extreme are 90-second
+// sprints: solve as many as you can, wrong pool picks cost 3 seconds.
 // ============================================================================
+
+const SPRINT_SECONDS = 90;
+const WRONG_PICK_PENALTY = 3; // seconds, sprint placing phase only
 
 // ----------------------------------------------------------------------------
 // Difficulty configuration
 //
+//   sprint   true = 90-second sprint mode with score; false = untimed practice
 //   pool     factors the student can click. Also the candidate set the
 //            generator draws from, so the two can never drift apart.
-//   bigPool  factors allowed as the base of a group of 3 or 4 (keeps a
-//            4th-root problem from generating something like 5⁴ = 625).
-//   shapes   group sizes. [2,1] = one pair + one single (3 chips).
-//            [2,2] = two pairs (4 chips). The first number is replaced by
-//            the root degree, so [2,1] under a cube root becomes [3,1].
-//   roots    which root degrees to draw from.
+//   bigPool  factors allowed as the base of a group of 3 or 4.
+//   shapes   group sizes. [2,1] = one pair + one single. The first number is
+//            replaced by the root degree, so [2,1] under a cube root is [3,1].
+//   roots    which root degrees to draw from (repeat to weight).
 //   varBias  chance (0-1) of forcing at least one variable into the problem.
 //   maxNum   retry generation if the numeric part exceeds this.
 // ----------------------------------------------------------------------------
 const MODES = {
   warmup: {
     label: "Warmup",
-    hasTimer: false,
+    sprint: false,
     hasPool: false,
     pool: [2, 3, 5, 7],
     bigPool: [2, 3],
@@ -33,7 +36,7 @@ const MODES = {
   },
   basic: {
     label: "Basic",
-    hasTimer: true,
+    sprint: false,
     hasPool: true,
     pool: [2, 3, 5, 7],
     bigPool: [2, 3],
@@ -41,39 +44,33 @@ const MODES = {
     roots: [2],
     varBias: 0,
     maxNum: 300,
-    hint: "build the radicand from the pool, then pair the primes out. wrong picks cost a second.",
+    hint: "practice mode — build the radicand from the pool, then pair the primes out. no clock.",
   },
   advanced: {
     label: "Advanced",
-    hasTimer: true,
+    sprint: true,
     hasPool: true,
     pool: [2, 3, 5, 7, "x", "y"],
     bigPool: [2, 3, "x", "y"],
-    shapes: [[2, 1], [2, 2], [2, 2, 1]],
+    shapes: [[2, 1], [2, 2], [2, 2, 1], [2, 1, 1]],
     roots: [2],
     varBias: 0.8,
-    maxNum: 200,
-    hint: "variables factor like primes. x² is two x's. pair them just the same.",
+    maxNum: 400,
+    hint: "90-second sprint. wrong pool picks cost 3 seconds. variables factor like primes.",
   },
   extreme: {
     label: "Extreme",
-    hasTimer: true,
+    sprint: true,
     hasPool: true,
     pool: [2, 3, 5, 7, "x", "y"],
-    bigPool: [2, 3, "x", "y"],
+    bigPool: [2, 3, 5, 7, "x", "y"],
     shapes: [[2, 1], [2, 2], [2, 1, 1]],
-    roots: [3, 3, 4],
+    roots: [2, 3, 3, 4],
     varBias: 0.6,
-    maxNum: 250,
-    hint: "cube root (∛) groups three matching. fourth root (∜) groups four.",
+    maxNum: 1000,
+    hint: "90-second sprint with square, cube (∛), and 4th (∜) roots. group 2, 3, or 4 to match.",
   },
 };
-
-// Seconds on the clock, scaled by how many chips the problem has.
-// Return a flat 10 here if you'd rather every problem get the same time.
-function timeLimitFor(chipCount) {
-  return Math.max(10, Math.round(4 + chipCount * 2));
-}
 
 // ----------------------------------------------------------------------------
 // Chip colors — each factor gets its own identity so matches read at a glance
@@ -103,11 +100,10 @@ const isNumeric = (v) => typeof v === "number";
 const isVar = (v) => typeof v === "string";
 const getStyle = (v) => CHIP_STYLE[v] || CHIP_STYLE[2];
 const sup = (n) => (n === 1 ? "" : String(n).split("").map((d) => SUPS[+d] || "").join(""));
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
 
 let idCounter = 0;
 const uid = () => "c" + ++idCounter;
-
-const gcd = (a, b) => (b ? gcd(b, a % b) : a);
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -118,7 +114,6 @@ function shuffle(arr) {
   return a;
 }
 
-// Group a flat factor list into { "2": 3, "x": 2 } counts
 function countFactors(factors) {
   const counts = {};
   factors.forEach((f) => (counts[f] = (counts[f] || 0) + 1));
@@ -152,10 +147,8 @@ function formatMap(map) {
   return (num > 1 ? String(num) : "") + vars.join("");
 }
 
-// The radicand as the student sees it, e.g. "50x²"
 const buildDisplay = (factors) => formatMap(countFactors(factors));
 
-// Numeric part only — used to keep generated numbers from blowing up
 function numericValue(factors) {
   return factors.reduce((acc, f) => (isNumeric(f) ? acc * f : acc), 1);
 }
@@ -166,22 +159,19 @@ function numericValue(factors) {
 function generateProblem(mode, avoidDisplay) {
   const cfg = MODES[mode];
 
-  for (let attempt = 0; attempt < 60; attempt++) {
+  for (let attempt = 0; attempt < 80; attempt++) {
     const root = pick(cfg.roots);
     const shape = pick(cfg.shapes).slice();
-    shape[0] = root; // the leading group always matches the root degree
+    shape[0] = root; // the escaping group always matches the root degree
 
     // A leftover exponent r under index n is only fully simplified when
-    // gcd(r, n) === 1. Without this, a 4th root with a leftover square would
-    // produce something like ∜9, which still reduces to √3.
+    // gcd(r, n) === 1 — otherwise the "answer" would still reduce (∜9 = √3).
     if (shape.slice(1).some((g) => gcd(g, root) > 1)) continue;
 
-    // Assign a distinct base to each group. Groups of 3+ draw from bigPool
-    // so we don't end up with something like 5⁴.
+    // Assign a distinct base to each group; groups of 3+ draw from bigPool
     const used = [];
     const bases = [];
     let ok = true;
-
     for (const size of shape) {
       const source = size >= 3 ? cfg.bigPool : cfg.pool;
       const available = source.filter((v) => !used.includes(v));
@@ -192,28 +182,22 @@ function generateProblem(mode, avoidDisplay) {
     }
     if (!ok) continue;
 
-    // Build the flat factor list
     const factors = [];
     bases.forEach((base, i) => {
       for (let n = 0; n < shape[i]; n++) factors.push(base);
     });
 
-    // Constraint: numeric part stays readable
     if (numericValue(factors) > cfg.maxNum) continue;
 
-    // Constraint: honor the variable bias
     const hasVar = factors.some(isVar);
     if (cfg.varBias > 0 && !hasVar && Math.random() < cfg.varBias) continue;
 
     const display = buildDisplay(factors);
-
-    // Constraint: don't repeat the problem we just showed
     if (display === avoidDisplay) continue;
 
     return { display, factors: shuffle(factors), root };
   }
 
-  // Fallback if constraints were somehow unsatisfiable
   return { display: "50", factors: [2, 5, 5], root: 2 };
 }
 
@@ -223,7 +207,7 @@ function generateProblem(mode, avoidDisplay) {
 const state = {
   mode: "warmup",
   problem: null,
-  phase: "pairing",       // placing | pairing | done
+  phase: "pairing",        // placing | pairing | done
   placedChips: [],
   coefficient: { num: 1, vars: {} },
   selectedIds: [],
@@ -232,27 +216,33 @@ const state = {
   wrongPlacedId: null,
   pairsMade: 0,
   coefPulse: false,
-  timeLeft: 0,
-  timeLimit: 0,
   revealed: false,
+  // practice stats
   solved: 0,
   streak: 0,
   best: 0,
+  // sprint
+  sprintActive: false,     // a sprint has been started and not abandoned
+  sprintOver: false,       // the 90 seconds have elapsed
+  sprintTime: 0,
+  sprintScore: 0,
+  sprintBest: { advanced: 0, extreme: 0 }, // session bests
 };
 
-// Bumped on every new problem so stale animation callbacks can bail out
+// Bumped on every new problem / mode switch so stale callbacks can bail out
 let token = 0;
 
 const cfg = () => MODES[state.mode];
 const rootDeg = () => state.problem.root;
 const rootSym = () => ROOT_MARK[rootDeg()] || "√";
+const inSprint = () => cfg().sprint && state.sprintActive;
 
 // ----------------------------------------------------------------------------
 // Actions
 // ----------------------------------------------------------------------------
-function loadProblem(newProblem) {
+function loadProblem(fresh) {
   token++;
-  if (newProblem) {
+  if (fresh) {
     state.problem = generateProblem(state.mode, state.problem && state.problem.display);
   }
   const p = state.problem;
@@ -273,8 +263,6 @@ function loadProblem(newProblem) {
   state.pairsMade = 0;
   state.coefPulse = false;
   state.revealed = false;
-  state.timeLimit = timeLimitFor(p.factors.length);
-  state.timeLeft = state.timeLimit;
 
   render();
 }
@@ -283,27 +271,62 @@ function switchMode(m) {
   if (m === state.mode) return;
   state.mode = m;
   state.streak = 0;
+  state.sprintActive = false;
+  state.sprintOver = false;
+  token++;
+  if (cfg().sprint) {
+    // Sprint modes open on the start panel, not a live problem
+    state.problem = generateProblem(m, null);
+    state.placedChips = [];
+    state.phase = "placing";
+    state.selectedIds = [];
+    state.pairingIds = [];
+    state.coefficient = { num: 1, vars: {} };
+    state.pairsMade = 0;
+    render();
+  } else {
+    loadProblem(true);
+  }
+}
+
+function startSprint() {
+  state.sprintActive = true;
+  state.sprintOver = false;
+  state.sprintTime = SPRINT_SECONDS;
+  state.sprintScore = 0;
   loadProblem(true);
 }
 
-function handleNextOrReveal() {
+function endSprintEarly() {
+  state.sprintActive = false;
+  state.sprintOver = false;
+  token++;
+  render();
+}
+
+// Sprint: skip the current problem (clock keeps running).
+// Practice: reveal, then next.
+function handlePrimaryAction() {
+  if (inSprint()) {
+    if (state.sprintOver) return; // no new problems after time
+    loadProblem(true);
+    return;
+  }
   if (state.phase === "done") { loadProblem(true); return; }
 
-  token++; // cancel any in-flight pair animation
+  // Practice reveal — jump the board to the answer state
+  token++;
   const { outside, inside } = factorize(state.problem.factors, rootDeg());
-
   const coef = { num: 1, vars: {} };
   Object.keys(outside).forEach((k) => {
     if (/^\d+$/.test(k)) coef.num *= Math.pow(+k, outside[k]);
     else coef.vars[k] = outside[k];
   });
-
   const chips = [];
   Object.keys(inside).forEach((k) => {
     const value = /^\d+$/.test(k) ? +k : k;
     for (let i = 0; i < inside[k]; i++) chips.push({ id: uid(), value });
   });
-
   state.coefficient = coef;
   state.placedChips = chips;
   state.selectedIds = [];
@@ -316,6 +339,7 @@ function handleNextOrReveal() {
 
 function handlePoolClick(value) {
   if (state.phase !== "placing" || state.pairingIds.length) return;
+  if (cfg().sprint && !state.sprintActive) return;
 
   const needed = state.problem.factors.filter((f) => f === value).length;
   const placed = state.placedChips.filter((c) => c.value === value).length;
@@ -328,24 +352,31 @@ function handlePoolClick(value) {
     render();
   } else {
     state.wrongPoolValue = value;
-    if (cfg().hasTimer) state.timeLeft = Math.max(0, state.timeLeft - 1);
+    if (inSprint() && !state.sprintOver) {
+      state.sprintTime = Math.max(0, state.sprintTime - WRONG_PICK_PENALTY);
+      if (state.sprintTime <= 0) state.sprintOver = true;
+    }
     render();
-    setTimeout(() => { state.wrongPoolValue = null; render(); }, 400);
+    const myToken = token;
+    setTimeout(() => {
+      if (myToken !== token) return;
+      state.wrongPoolValue = null;
+      render();
+    }, 400);
   }
 }
 
 function handlePlacedClick(id) {
   if (state.phase !== "pairing" || state.pairingIds.length) return;
+  if (cfg().sprint && !state.sprintActive) return;
 
   const chip = state.placedChips.find((c) => c.id === id);
   if (!chip) return;
 
-  // Tapping a selected chip deselects it — free, no penalty
   if (state.selectedIds.includes(id)) {
     state.selectedIds = state.selectedIds.filter((i) => i !== id);
     return render();
   }
-
   if (!state.selectedIds.length) {
     state.selectedIds = [id];
     return render();
@@ -353,10 +384,15 @@ function handlePlacedClick(id) {
 
   const first = state.placedChips.find((c) => c.id === state.selectedIds[0]);
   if (!first || first.value !== chip.value) {
+    // Pairing-phase mistakes shake but cost nothing, in every mode
     state.wrongPlacedId = id;
-    if (cfg().hasTimer) state.timeLeft = Math.max(0, state.timeLeft - 1);
     render();
-    setTimeout(() => { state.wrongPlacedId = null; render(); }, 400);
+    const myToken = token;
+    setTimeout(() => {
+      if (myToken !== token) return;
+      state.wrongPlacedId = null;
+      render();
+    }, 400);
     return;
   }
 
@@ -366,7 +402,7 @@ function handlePlacedClick(id) {
     return render();
   }
 
-  // Full group — animate it out, then fold the value into the coefficient
+  // Full group — animate out, fold the value into the coefficient
   state.pairingIds = selection;
   state.selectedIds = [];
   render();
@@ -399,20 +435,44 @@ function checkCompletion() {
   if (state.placedChips.length && anyGroupLeft) return;
 
   state.phase = "done";
+
+  if (inSprint()) {
+    // Only counts if finished before the clock ran out
+    if (!state.sprintOver) {
+      state.sprintScore++;
+      state.sprintBest[state.mode] = Math.max(state.sprintBest[state.mode], state.sprintScore);
+      // Brief answer flash, then auto-advance to keep the sprint moving
+      const myToken = token;
+      setTimeout(() => {
+        if (myToken !== token) return;
+        if (state.sprintOver) { render(); return; }
+        loadProblem(true);
+      }, 900);
+    }
+    render();
+    return;
+  }
+
+  // Practice bookkeeping
   state.solved++;
-  const clean = !state.revealed && (!cfg().hasTimer || state.timeLeft > 0);
+  const clean = !state.revealed;
   state.streak = clean ? state.streak + 1 : 0;
   state.best = Math.max(state.best, state.streak);
   render();
 }
 
 // ----------------------------------------------------------------------------
-// Timer — one interval for the whole app, gated by state
+// Sprint clock — one interval for the whole app, gated by state
 // ----------------------------------------------------------------------------
 setInterval(() => {
-  if (!cfg().hasTimer || state.phase === "done" || state.timeLeft <= 0) return;
-  state.timeLeft = Math.max(0, +(state.timeLeft - 0.1).toFixed(1));
-  updateTimer();
+  if (!inSprint() || state.sprintOver || state.sprintTime <= 0) return;
+  state.sprintTime = Math.max(0, +(state.sprintTime - 0.1).toFixed(1));
+  if (state.sprintTime <= 0) {
+    state.sprintOver = true;
+    render(); // full render: banner appears, actions change
+  } else {
+    updateTimer();
+  }
 }, 100);
 
 // ----------------------------------------------------------------------------
@@ -428,20 +488,23 @@ const SKELETON = `
       <div class="level-badge" id="badge"></div>
     </div>
     <div class="tabs" id="tabs" role="tablist" aria-label="difficulty"></div>
-    <div class="prompt-row">
-      <div class="prompt" id="prompt"></div>
-      <div class="timer" id="timer"><span id="timer-value"></span><span class="timer-unit">s</span></div>
-    </div>
-    <div class="timer-bar-wrap" id="timer-bar-wrap"><div class="timer-bar" id="timer-bar"></div></div>
-    <div class="stage">
-      <div class="radical-row">
-        <div class="coefficient" id="coefficient"></div>
-        <div class="radical-mark" id="radical-mark"></div>
-        <div class="radicand-box" id="radicand-box"></div>
+    <div id="sprint-start-area"></div>
+    <div id="game-area">
+      <div class="prompt-row">
+        <div class="prompt" id="prompt"></div>
+        <div class="timer" id="timer"><span id="timer-value"></span><span class="timer-unit">s</span></div>
       </div>
-      <div id="feedback-area"></div>
-      <div id="pool-area"></div>
-      <div class="actions" id="actions"></div>
+      <div class="timer-bar-wrap" id="timer-bar-wrap"><div class="timer-bar" id="timer-bar"></div></div>
+      <div class="stage">
+        <div class="radical-row">
+          <div class="coefficient" id="coefficient"></div>
+          <div class="radical-mark" id="radical-mark"></div>
+          <div class="radicand-box" id="radicand-box"></div>
+        </div>
+        <div id="feedback-area"></div>
+        <div id="pool-area"></div>
+        <div class="actions" id="actions"></div>
+      </div>
     </div>
     <div class="instructions" id="instructions"></div>
   </div>
@@ -451,23 +514,55 @@ function render() {
   const root = document.getElementById("root");
   if (!root.querySelector(".app")) root.innerHTML = SKELETON;
 
+  const sprintIdle = cfg().sprint && !state.sprintActive;
+
   renderBadge();
   renderTabs();
-  document.getElementById("prompt").innerHTML =
-    `simplify<span class="target">${rootSym()}${state.problem.display}</span>`;
-  renderTimerSection();
-  renderRadical();
-  renderFeedback();
-  renderPool();
-  renderActions();
+  document.getElementById("sprint-start-area").innerHTML = sprintIdle ? sprintStartPanel() : "";
+  document.getElementById("game-area").style.display = sprintIdle ? "none" : "";
+
+  if (!sprintIdle) {
+    document.getElementById("prompt").innerHTML =
+      `simplify<span class="target">${rootSym()}${state.problem.display}</span>`;
+    renderTimerSection();
+    renderRadical();
+    renderFeedback();
+    renderPool();
+    renderActions();
+  }
+
   document.getElementById("instructions").textContent = cfg().hint;
 }
 
+function sprintStartPanel() {
+  const best = state.sprintBest[state.mode];
+  return `
+    <div class="sprint-start">
+      <div class="sprint-start-title">${cfg().label} sprint</div>
+      <div class="sprint-start-body">
+        ${SPRINT_SECONDS} seconds on the clock. Solve as many as you can.<br>
+        Wrong pool picks cost ${WRONG_PICK_PENALTY} seconds.
+      </div>
+      ${best ? `<div class="sprint-start-best">session best: ${best}</div>` : ""}
+      <button class="btn primary big" data-action="start-sprint">start sprint</button>
+    </div>`;
+}
+
 function renderBadge() {
-  const parts = [`solved ${state.solved}`];
-  if (state.streak > 1) parts.push(`streak ${state.streak}`);
-  else if (state.best > 1) parts.push(`best ${state.best}`);
-  document.getElementById("badge").textContent = parts.join(" · ");
+  const badge = document.getElementById("badge");
+  if (cfg().sprint) {
+    if (state.sprintActive) {
+      badge.textContent = `score ${state.sprintScore}`;
+    } else {
+      const best = state.sprintBest[state.mode];
+      badge.textContent = best ? `best ${best}` : "sprint";
+    }
+  } else {
+    const parts = [`solved ${state.solved}`];
+    if (state.streak > 1) parts.push(`streak ${state.streak}`);
+    else if (state.best > 1) parts.push(`best ${state.best}`);
+    badge.textContent = parts.join(" · ");
+  }
 }
 
 function renderTabs() {
@@ -479,7 +574,7 @@ function renderTabs() {
 }
 
 function renderTimerSection() {
-  const show = cfg().hasTimer;
+  const show = inSprint();
   document.getElementById("timer").style.display = show ? "" : "none";
   document.getElementById("timer-bar-wrap").style.display = show ? "" : "none";
   if (show) updateTimer();
@@ -491,9 +586,9 @@ function updateTimer() {
   const timer = document.getElementById("timer");
   if (!value || !bar || !timer) return;
 
-  value.textContent = state.timeLeft.toFixed(1);
-  bar.style.width = `${(state.timeLeft / state.timeLimit) * 100}%`;
-  const warn = state.timeLeft <= 3;
+  value.textContent = state.sprintTime.toFixed(1);
+  bar.style.width = `${(state.sprintTime / SPRINT_SECONDS) * 100}%`;
+  const warn = state.sprintTime <= 10;
   timer.classList.toggle("warn", warn);
   bar.classList.toggle("warn", warn);
 }
@@ -504,7 +599,7 @@ function renderRadical() {
   const boxEl = document.getElementById("radicand-box");
 
   const showRadical = state.phase === "placing" || state.placedChips.length > 0;
-  const coefStr = formatMap(coefVarsAsMap()) || (!showRadical ? "1" : "");
+  const coefStr = formatMap(coefMap()) || (!showRadical ? "1" : "");
 
   coefEl.textContent = showRadical && coefStr === "1" ? "" : coefStr;
   coefEl.className = `coefficient${state.coefPulse ? " pulse" : ""}${showRadical ? "" : " solo"}`;
@@ -518,8 +613,7 @@ function renderRadical() {
   reconcileChips(boxEl);
 }
 
-// Present the live coefficient in the same { base: power } shape formatMap wants
-function coefVarsAsMap() {
+function coefMap() {
   const map = {};
   if (state.coefficient.num > 1) map[state.coefficient.num] = 1;
   Object.keys(state.coefficient.vars).forEach((v) => {
@@ -578,6 +672,16 @@ function renderFeedback() {
   const rd = rootDeg();
   const sym = rootSym();
 
+  // Sprint time's-up banner takes priority
+  if (inSprint() && state.sprintOver) {
+    const finishNote = state.phase !== "done"
+      ? `<span class="bonus">you can finish this one, but it won't count</span>`
+      : "";
+    area.innerHTML =
+      `<div class="answer revealed">time! final score: ${state.sprintScore}${finishNote}</div>`;
+    return;
+  }
+
   if (state.phase !== "done") {
     let text;
     if (state.phase === "placing") {
@@ -598,9 +702,8 @@ function renderFeedback() {
   const answer = radStr ? `${coefStr === "1" ? "" : coefStr}${sym}${radStr}` : coefStr;
 
   let bonus = "";
-  if (state.revealed) bonus = "answer shown — reset to try again";
-  else if (cfg().hasTimer && state.timeLeft > 0) bonus = `nice — ${state.timeLeft.toFixed(1)}s to spare`;
-  else if (cfg().hasTimer) bonus = "solved with no time to spare";
+  if (state.revealed) bonus = "answer shown";
+  else if (inSprint()) bonus = "+1";
 
   area.innerHTML =
     `<div class="answer${state.revealed ? " revealed" : ""}">` +
@@ -627,7 +730,19 @@ function renderPool() {
 }
 
 function renderActions() {
-  document.getElementById("actions").innerHTML =
+  const el = document.getElementById("actions");
+
+  if (inSprint()) {
+    if (state.sprintOver) {
+      el.innerHTML = `<button class="btn primary" data-action="start-sprint">new sprint</button>` +
+                     `<button class="btn" data-action="end-sprint">exit</button>`;
+    } else {
+      el.innerHTML = `<button class="btn" data-action="skip">skip →</button>`;
+    }
+    return;
+  }
+
+  el.innerHTML =
     `<button class="btn" data-action="reset">reset</button>` +
     `<button class="btn primary" data-action="next">${state.phase === "done" ? "next →" : "reveal →"}</button>`;
 }
@@ -644,10 +759,14 @@ document.addEventListener("click", (e) => {
   else if (action === "pool") handlePoolClick(/^\d+$/.test(value) ? +value : value);
   else if (action === "chip") handlePlacedClick(id);
   else if (action === "reset") loadProblem(false);
-  else if (action === "next") handleNextOrReveal();
+  else if (action === "next") handlePrimaryAction();
+  else if (action === "skip") handlePrimaryAction();
+  else if (action === "start-sprint") startSprint();
+  else if (action === "end-sprint") endSprintEarly();
 });
 
 // ----------------------------------------------------------------------------
 // Init
 // ----------------------------------------------------------------------------
-loadProblem(true);
+state.problem = generateProblem(state.mode, null);
+loadProblem(false);
