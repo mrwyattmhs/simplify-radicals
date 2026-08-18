@@ -8,6 +8,11 @@
 const SPRINT_SECONDS = 90;
 const WRONG_PICK_PENALTY = 3; // seconds, sprint placing phase only
 
+// Paste your Apps Script Web App URL here to turn on the leaderboard.
+// Leave it blank and the game runs exactly the same, just with no
+// leaderboard button — nothing breaks, nothing calls out to the network.
+const LEADERBOARD_URL = "";
+
 // ----------------------------------------------------------------------------
 // Difficulty configuration
 //
@@ -90,6 +95,10 @@ const CHIP_STYLE = {
 
 const ROOT_MARK = { 2: "√", 3: "∛", 4: "∜" };
 const SUPS = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+
+// Modes with a leaderboard — derived from MODES so it can never drift out
+// of sync with which modes are actually sprints.
+const VALID_SPRINT_MODES = Object.keys(MODES).filter((m) => MODES[m].sprint);
 
 // ----------------------------------------------------------------------------
 // Small helpers
@@ -226,7 +235,13 @@ const state = {
   sprintOver: false,       // the 90 seconds have elapsed
   sprintTime: 0,
   sprintScore: 0,
+  sprintSubmitted: false,  // guards against double-submitting one sprint
   sprintBest: { advanced: 0, extreme: 0 }, // session bests
+  // leaderboard
+  leaderboardOpen: false,
+  leaderboardLoading: false,
+  leaderboardError: null,
+  leaderboards: { advanced: null, extreme: null }, // null = not fetched yet
 };
 
 // Bumped on every new problem / mode switch so stale callbacks can bail out
@@ -294,6 +309,7 @@ function startSprint() {
   state.sprintOver = false;
   state.sprintTime = SPRINT_SECONDS;
   state.sprintScore = 0;
+  state.sprintSubmitted = false;
   loadProblem(true);
 }
 
@@ -302,6 +318,17 @@ function endSprintEarly() {
   state.sprintOver = false;
   token++;
   render();
+}
+
+// Called from every place the clock can hit zero. Idempotent — only the
+// first call actually submits, so it's safe to call from multiple spots.
+function finishSprint() {
+  if (state.sprintOver) return;
+  state.sprintOver = true;
+  if (!state.sprintSubmitted) {
+    state.sprintSubmitted = true;
+    submitScore(state.mode, state.sprintScore);
+  }
 }
 
 // Sprint: skip the current problem (clock keeps running).
@@ -354,7 +381,7 @@ function handlePoolClick(value) {
     state.wrongPoolValue = value;
     if (inSprint() && !state.sprintOver) {
       state.sprintTime = Math.max(0, state.sprintTime - WRONG_PICK_PENALTY);
-      if (state.sprintTime <= 0) state.sprintOver = true;
+      if (state.sprintTime <= 0) finishSprint();
     }
     render();
     const myToken = token;
@@ -468,7 +495,7 @@ setInterval(() => {
   if (!inSprint() || state.sprintOver || state.sprintTime <= 0) return;
   state.sprintTime = Math.max(0, +(state.sprintTime - 0.1).toFixed(1));
   if (state.sprintTime <= 0) {
-    state.sprintOver = true;
+    finishSprint();
     render(); // full render: banner appears, actions change
   } else {
     updateTimer();
@@ -476,10 +503,80 @@ setInterval(() => {
 }, 100);
 
 // ----------------------------------------------------------------------------
+// Leaderboard — talks to a Google Apps Script Web App (see leaderboard-script.gs)
+//
+// Everything here is best-effort. If LEADERBOARD_URL is blank, or the
+// network call fails for any reason, the game keeps working exactly as if
+// the leaderboard didn't exist — no thrown errors, no blocked UI.
+// ----------------------------------------------------------------------------
+const leaderboardConfigured = () => LEADERBOARD_URL.trim().length > 0;
+
+function submitScore(mode, score) {
+  if (!leaderboardConfigured()) return;
+  if (!VALID_SPRINT_MODES.includes(mode)) return;
+  if (!(score > 0)) return; // don't bother logging zeroes
+
+  // text/plain avoids a CORS preflight that Apps Script doesn't handle well
+  fetch(LEADERBOARD_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ mode, score }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data && Array.isArray(data.scores)) {
+        state.leaderboards[mode] = data.scores;
+        if (state.leaderboardOpen) render();
+      }
+    })
+    .catch(() => {
+      // Silent — a failed submission shouldn't interrupt the game.
+      // The score still counted in-session; it just won't be on the board.
+    });
+}
+
+function fetchLeaderboard(mode) {
+  if (!leaderboardConfigured()) return;
+  if (!VALID_SPRINT_MODES.includes(mode)) return;
+
+  state.leaderboardLoading = true;
+  state.leaderboardError = null;
+  render();
+
+  fetch(`${LEADERBOARD_URL}?mode=${mode}`)
+    .then((r) => r.json())
+    .then((data) => {
+      state.leaderboardLoading = false;
+      if (data && Array.isArray(data.scores)) {
+        state.leaderboards[mode] = data.scores;
+      } else {
+        state.leaderboardError = "couldn't load scores";
+      }
+      render();
+    })
+    .catch(() => {
+      state.leaderboardLoading = false;
+      state.leaderboardError = "couldn't load scores";
+      render();
+    });
+}
+
+function toggleLeaderboard() {
+  state.leaderboardOpen = !state.leaderboardOpen;
+  if (state.leaderboardOpen && leaderboardConfigured()) {
+    VALID_SPRINT_MODES.forEach((m) => {
+      if (state.leaderboards[m] === null) fetchLeaderboard(m);
+    });
+  }
+  render();
+}
+
+// ----------------------------------------------------------------------------
 // Rendering
 // ----------------------------------------------------------------------------
 const SKELETON = `
   <div class="app">
+    <button class="leaderboard-btn" id="leaderboard-btn" data-action="toggle-leaderboard" aria-label="leaderboard">🏆</button>
     <div class="app-header">
       <div class="title-block">
         <div class="app-title">Prime Pairs</div>
@@ -507,6 +604,7 @@ const SKELETON = `
       </div>
     </div>
     <div class="instructions" id="instructions"></div>
+    <div id="leaderboard-panel"></div>
   </div>
 `;
 
@@ -518,6 +616,8 @@ function render() {
 
   renderBadge();
   renderTabs();
+  renderLeaderboardButton();
+  renderLeaderboardPanel();
   document.getElementById("sprint-start-area").innerHTML = sprintIdle ? sprintStartPanel() : "";
   document.getElementById("game-area").style.display = sprintIdle ? "none" : "";
 
@@ -571,6 +671,64 @@ function renderTabs() {
     return `<button role="tab" aria-selected="${active}" class="tab${active ? " active" : ""}"
       data-action="mode" data-value="${m}">${MODES[m].label}</button>`;
   }).join("");
+}
+
+function renderLeaderboardButton() {
+  const btn = document.getElementById("leaderboard-btn");
+  if (!btn) return;
+  btn.classList.toggle("open", state.leaderboardOpen);
+}
+
+function renderLeaderboardPanel() {
+  const panel = document.getElementById("leaderboard-panel");
+  if (!panel) return;
+
+  if (!state.leaderboardOpen) {
+    panel.innerHTML = "";
+    panel.className = "";
+    return;
+  }
+  panel.className = "leaderboard-overlay";
+
+  if (!leaderboardConfigured()) {
+    panel.innerHTML = `
+      <div class="leaderboard-card">
+        <button class="leaderboard-close" data-action="toggle-leaderboard" aria-label="close">×</button>
+        <div class="leaderboard-title">Leaderboard</div>
+        <div class="leaderboard-empty">not connected yet — ask your teacher to finish setup</div>
+      </div>`;
+    return;
+  }
+
+  const section = (mode) => {
+    const scores = state.leaderboards[mode];
+    let body;
+    if (state.leaderboardLoading && scores === null) {
+      body = `<div class="leaderboard-empty">loading…</div>`;
+    } else if (state.leaderboardError && scores === null) {
+      body = `<div class="leaderboard-empty">${state.leaderboardError}</div>`;
+    } else if (!scores || !scores.length) {
+      body = `<div class="leaderboard-empty">no scores yet — be the first</div>`;
+    } else {
+      body = `<ol class="leaderboard-list">` +
+        scores.map((s) => `<li>${s}</li>`).join("") +
+        `</ol>`;
+    }
+    return `
+      <div class="leaderboard-section">
+        <div class="leaderboard-section-title">${MODES[mode].label}</div>
+        ${body}
+      </div>`;
+  };
+
+  panel.innerHTML = `
+    <div class="leaderboard-card">
+      <button class="leaderboard-close" data-action="toggle-leaderboard" aria-label="close">×</button>
+      <div class="leaderboard-title">Leaderboard</div>
+      <div class="leaderboard-sections">
+        ${VALID_SPRINT_MODES.map(section).join("")}
+      </div>
+    </div>`;
 }
 
 function renderTimerSection() {
@@ -763,6 +921,7 @@ document.addEventListener("click", (e) => {
   else if (action === "skip") handlePrimaryAction();
   else if (action === "start-sprint") startSprint();
   else if (action === "end-sprint") endSprintEarly();
+  else if (action === "toggle-leaderboard") toggleLeaderboard();
 });
 
 // ----------------------------------------------------------------------------
