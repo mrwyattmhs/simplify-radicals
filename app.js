@@ -11,7 +11,7 @@ const WRONG_PICK_PENALTY = 3; // seconds, sprint placing phase only
 // Paste your Apps Script Web App URL here to turn on the leaderboard.
 // Leave it blank and the game runs exactly the same, just with no
 // leaderboard button — nothing breaks, nothing calls out to the network.
-const LEADERBOARD_URL = "";
+const LEADERBOARD_URL = "https://script.google.com/macros/s/AKfycbxNTUxnh_hrBgrg-emgbjM9HBIKGQ0o_hHUGRam818P8cNPcAlAf4zU0RswtY86Gf4K1g/exec";
 
 // ----------------------------------------------------------------------------
 // Difficulty configuration
